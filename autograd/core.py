@@ -147,6 +147,48 @@ class primitive(object):
         def __get__(self, obj, objtype):
             return types.MethodType(self, obj, objtype)
 
+class primitive_with_intermediates(primitive):
+    # the methods in this class are copied from primitive except for one changed
+    # line in each (noted in comments). I wrote it this way so as not to change
+    # primitive at all.
+
+    def __call__(self, *args, **kwargs):
+        argvals = list(args)
+        ops = []
+        tapes = set()
+        for i, arg in enumerate(args):
+            if isinstance(arg, Node):
+                argvals[i] = arg.value
+                if i in self.zero_grads: continue
+                for tape, parent_rnode in iteritems(arg.tapes):
+                    if not tape.complete:
+                        ops.append((tape, i, parent_rnode))
+                        tapes.add(tape)
+
+        # next line is different
+        result, self.intermediates = self.fun(*argvals, return_intermediates=True, **kwargs)
+        if result is NotImplemented: return result
+        if ops:
+            result = new_node(result, tapes)
+            for tape, argnum, parent in ops:
+                gradfun = self.gradmaker(argnum, result, args, kwargs)
+                rnode = result.tapes[tape]
+                rnode.parent_grad_ops.append((gradfun, parent))
+        return result
+
+    def gradmaker(self, argnum, ans, args, kwargs):
+        try:
+            # next line is different
+            return self.grads[argnum](self.intermediates, ans, *args, **kwargs)
+        except KeyError:
+            def error(*args, **kwargs):
+                if self.grads == {}:
+                    errstr = "Gradient of {0} not yet implemented."
+                else:
+                    errstr = "Gradient of {0} w.r.t. arg number {1} not yet implemented."
+                raise NotImplementedError(errstr.format(self.fun.__name__, argnum))
+            return error
+
 @primitive
 def merge_tapes(x, y): return x
 merge_tapes.defgrad(lambda ans, x, y : lambda g : g)
