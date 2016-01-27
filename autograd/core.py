@@ -148,10 +148,6 @@ class primitive(object):
             return types.MethodType(self, obj, objtype)
 
 class primitive_with_intermediates(primitive):
-    # the methods in this class are copied from primitive except for one changed
-    # line in each (noted in comments). I wrote it this way so as not to change
-    # primitive at all.
-
     def __call__(self, *args, **kwargs):
         argvals = list(args)
         ops = []
@@ -166,28 +162,23 @@ class primitive_with_intermediates(primitive):
                         tapes.add(tape)
 
         # next line is different
-        result, self.intermediates = self.fun(*argvals, return_intermediates=True, **kwargs)
+        result, intermediates = self.fun(*argvals, return_intermediates=True, **kwargs)
         if result is NotImplemented: return result
         if ops:
             result = new_node(result, tapes)
             for tape, argnum, parent in ops:
-                gradfun = self.gradmaker(argnum, result, args, kwargs)
+                # next line is different
+                gradfun = self.gradmaker(argnum, intermediates, result, args, kwargs)
                 rnode = result.tapes[tape]
                 rnode.parent_grad_ops.append((gradfun, parent))
         return result
 
-    def gradmaker(self, argnum, ans, args, kwargs):
+    def gradmaker(self, argnum, intermediates, ans, args, kwargs):
         try:
-            # next line is different
-            return self.grads[argnum](self.intermediates, ans, *args, **kwargs)
+            return self.grads[argnum](intermediates, ans, *args, **kwargs)
         except KeyError:
-            def error(*args, **kwargs):
-                if self.grads == {}:
-                    errstr = "Gradient of {0} not yet implemented."
-                else:
-                    errstr = "Gradient of {0} w.r.t. arg number {1} not yet implemented."
-                raise NotImplementedError(errstr.format(self.fun.__name__, argnum))
-            return error
+            # defer to parent class's handling of this error
+            return super(primitive_with_intermediates, self).gradmaker(argnum, ans, args, kwargs)
 
 @primitive
 def merge_tapes(x, y): return x
