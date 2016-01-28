@@ -161,8 +161,7 @@ class primitive_with_intermediates(primitive):
                         ops.append((tape, i, parent_rnode))
                         tapes.add(tape)
 
-        # next line is different
-        result, intermediates = self.fun(*argvals, return_intermediates=True, **kwargs)
+        result, intermediates = self.fun(*argvals, **kwargs)
         if result is NotImplemented: return result
         if ops:
             result = new_node(result, tapes)
